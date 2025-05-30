@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FXトレード記録ツール - 計算＆履歴管理</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="script.js" defer></script>
+    </head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 FXトレード記録ツール</h1>
+            <p>ロット計算・トレード記録・収支分析を一元管理</p>
+        </div>
+        
+        <div class="form-container">
+            <div class="form-row">
+                <div class="form-group">
+    <label for="accountBalance">口座残高（円）</label>
+    <input type="text" id="accountBalance" value="100,000" 
+           oninput="formatNumberInput(this)" 
+           onblur="validateNumberInput(this)" 
+           placeholder="例: 1,000,000" 
+           required>
+</div>
+                
+                <div class="form-group">
+                    <label for="riskPercent">許容損失率（%）</label>
+                    <input type="number" id="riskPercent" value="2" step="0.1" required>
+                </div>
+            </div>
+
+            <div class="currency-group">
+                <h3>通貨ペア設定</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="currencyPair">通貨ペア</label>
+                        <select id="currencyPair" required>
+                            <option value="USDJPY">USD/JPY</option>
+                            <option value="EURJPY">EUR/JPY</option>
+                            <option value="GBPJPY">GBP/JPY</option>
+                            <option value="AUDJPY">AUD/JPY</option>
+                            <option value="EURUSD">EUR/USD</option>
+                            <option value="GBPUSD">GBP/USD</option>
+                            <option value="AUDUSD">AUD/USD</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="usdJpyGroup" style="display: none;">
+                        <label for="usdJpyRate">USD/JPYレート</label>
+                        <input type="number" id="usdJpyRate" step="0.01" value="150.00">
+                    </div>
+                </div>
+            </div>
+
+            <div class="currency-group">
+                <h3>価格設定</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="entryPrice">エントリー価格</label>
+                        <input type="number" id="entryPrice" step="0.00001" value="150.00" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="stopLoss">🔻 損切り価格</label>
+                        <input type="number" id="stopLoss" step="0.00001" value="150.20" required>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="targetPrice">🎯 目標価格（利確）</label>
+                    <input type="number" id="targetPrice" step="0.00001" value="149.70" required>
+                </div>
+            </div>
+
+            <button type="button" class="calculate-btn" onclick="calculateOptimalLots()">
+                💡 最適ロット数を計算
+            </button>
+
+            <div id="results" class="result-container">
+                <div class="lot-result">
+                    <div class="value" id="optimalLots">-</div>
+                    <div class="label">最適ロット数</div>
+                </div>
+                
+                <div class="result-item">
+                    <span class="result-label">📊 リスクリワード比</span>
+                    <span class="result-value ratio-highlight" id="riskRewardRatio">-</span>
+                </div>
+                
+                <div class="result-item">
+                    <span class="result-label">💰 想定利益額</span>
+                    <span class="result-value profit-highlight" id="expectedProfit">-</span>
+                </div>
+                
+                <div class="result-item">
+                    <span class="result-label">🔻 リスク金額</span>
+                    <span class="result-value risk-highlight" id="riskAmount">-</span>
+                </div>
+                
+                <div class="result-item">
+                    <span class="result-label">価格差（損益まで）</span>
+                    <span class="result-value" id="pipsDifference">-</span>
+                </div>
+
+                <div class="result-item">
+                    <span class="result-label">価格差（利益まで）</span>
+                    <span class="result-value" id="targetPipsDifference">-</span>
+                </div>
+                
+                <div class="result-item">
+                    <span class="result-label">必要証拠金（概算）</span>
+                    <span class="result-value" id="requiredMargin">-</span>
+                </div>
+
+                <button type="button" class="save-record-btn" onclick="saveTradeRecord()">
+                    📝 この計算結果を記録に保存
+                </button>
+            </div>
+
+            <div id="warning" class="warning">
+                ⚠️ 警告メッセージがここに表示されます
+            </div>
+        </div>
+
+        <!-- トレード記録セクション -->
+        <div class="records-section">
+            <div class="records-header">
+                <h2 class="records-title">📈 トレード記録</h2>
+                <button class="clear-data-btn" onclick="clearAllRecords()">全記録削除</button>
+            </div>
+
+            <div class="stats-summary" id="statsSummary">
+                <!-- 統計情報がここに表示されます -->
+            </div>
+
+            <div class="controls">
+                <button class="control-btn active" onclick="sortRecords('date-desc')">新しい順</button>
+                <button class="control-btn" onclick="sortRecords('date-asc')">古い順</button>
+                <button class="control-btn" onclick="filterRecords('all')">全て表示</button>
+                <button class="control-btn" onclick="filterRecords('win')">勝ちのみ</button>
+                <button class="control-btn" onclick="filterRecords('loss')">負けのみ</button>
+                <button class="control-btn" onclick="filterRecords('pending')">未決済</button>
+            </div>
+            
+            <div style="overflow-x: auto;">
+                <table class="records-table">
+                    <thead>
+                        <tr>
+                            <th>日時</th>
+                            <th>通貨</th>
+                            <th>エントリー</th>
+                            <th>損切り</th>
+                            <th>目標価格</th>
+                            <th>ロット</th>
+                            <th>想定利益</th>
+                            <th>想定損失</th>
+                            <th>RR比</th>
+                            <th>結果</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recordsTableBody">
+                        <!-- トレード記録がここに表示されます -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
