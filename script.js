@@ -1,42 +1,240 @@
-console.log('FXトレード記録ツール開始');
+//======================================================================
+// Firebase初期化 - あなたのプロジェクト設定
+//======================================================================
+const firebaseConfig = {
+    apiKey: "AIzaSyBacHwNi61zQ9k1yaBczsyN2uvEJNekHoY",
+    authDomain: "myfx-calculator.firebaseapp.com",
+    projectId: "myfx-calculator",
+    storageBucket: "myfx-calculator.firebasestorage.app",
+    messagingSenderId: "1095991180111",
+    appId: "1:1095991180111:web:afdbaeeba863bfc42c233a",
+    measurementId: "G-9SJLXY7HDT"
+};
 
+// Firebase アプリケーションの初期化
+const app = firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+console.log('Firebase初期化完了:', firebaseConfig.projectId);
+
+//======================================================================
 // グローバル変数
-let tradeRecords = [];
-let currentCalculation = null;
+//======================================================================
+let currentUser = null; // 現在のユーザー情報
+let tradeRecords = []; // 現在表示しているトレード記録
+let currentCalculation = null; // 最新の計算結果
 let currentSort = 'date-desc';
 let currentFilter = 'all';
 
+//======================================================================
+// HTML要素の取得
+//======================================================================
+const loginFormContainer = document.getElementById('login-form-container');
+const userInfoContainer = document.getElementById('user-info-container');
+const userEmailSpan = document.getElementById('user-email');
 const currencyPair = document.getElementById('currencyPair');
 const usdJpyGroup = document.getElementById('usdJpyGroup');
 const results = document.getElementById('results');
 const warning = document.getElementById('warning');
 
-// localStorage関連の関数（実際のWebサイトでのみ動作）
-function loadRecords() {
+//======================================================================
+// 認証機能（ログイン・ログアウトなど）
+//======================================================================
+
+// 認証状態の監視
+auth.onAuthStateChanged(user => {
+    const mainContent = document.querySelector('.container');
+    if (user) {
+        // ログインしている場合の処理
+        currentUser = user;
+        console.log('ログイン中:', currentUser.uid, currentUser.email);
+
+        // UIの切り替え
+        loginFormContainer.style.display = 'none';
+        userInfoContainer.style.display = 'block';
+        userEmailSpan.textContent = currentUser.email;
+        mainContent.style.display = 'block';
+
+        // ログインしたユーザーのデータを読み込む
+        loadRecords();
+        
+    } else {
+        // ログアウトしている場合の処理
+        currentUser = null;
+        console.log('ログアウト状態');
+
+        // UIの切り替え
+        loginFormContainer.style.display = 'flex';
+        userInfoContainer.style.display = 'none';
+        mainContent.style.display = 'none';
+
+        // データをクリア
+        tradeRecords = [];
+        updateRecordsDisplay();
+    }
+});
+
+// 新規登録
+function signUp() {
+    const email = document.getElementById('signup-email').value;
+    const password = document.getElementById('signup-password').value;
+    
+    if (!email || !password) {
+        alert('メールアドレスとパスワードを入力してください');
+        return;
+    }
+    
+    if (password.length < 6) {
+        alert('パスワードは6文字以上で入力してください');
+        return;
+    }
+    
+    console.log('新規登録を試行中:', email);
+    
+    auth.createUserWithEmailAndPassword(email, password)
+        .then(userCredential => {
+            console.log('新規登録成功:', userCredential.user.uid);
+            alert('ユーザー登録が完了しました！');
+            // フォームをクリア
+            document.getElementById('signup-email').value = '';
+            document.getElementById('signup-password').value = '';
+        })
+        .catch(error => {
+            console.error('新規登録エラー:', error);
+            alert('ユーザー登録エラー: ' + error.message);
+        });
+}
+
+// ログイン
+function logIn() {
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
+    
+    if (!email || !password) {
+        alert('メールアドレスとパスワードを入力してください');
+        return;
+    }
+    
+    console.log('ログインを試行中:', email);
+    
+    auth.signInWithEmailAndPassword(email, password)
+        .then(userCredential => {
+            console.log('ログイン成功:', userCredential.user.uid);
+            alert('ログインしました！');
+            // フォームをクリア
+            document.getElementById('login-email').value = '';
+            document.getElementById('login-password').value = '';
+        })
+        .catch(error => {
+            console.error('ログインエラー:', error);
+            alert('ログインエラー: ' + error.message);
+        });
+}
+
+// ログアウト
+function logOut() {
+    if (confirm('ログアウトしますか？')) {
+        console.log('ログアウト試行中');
+        auth.signOut()
+            .then(() => {
+                console.log('ログアウト成功');
+                alert('ログアウトしました。');
+            })
+            .catch((error) => {
+                console.error('ログアウトエラー:', error);
+                alert('ログアウトエラー: ' + error.message);
+            });
+    }
+}
+
+//======================================================================
+// データベース機能 (Firestore) - ユーザーごとのデータ管理
+//======================================================================
+
+// 記録の読み込み（ユーザー専用パス使用）
+async function loadRecords() {
+    if (!currentUser) {
+        console.log('ユーザーがログインしていないため、記録を読み込みません');
+        return;
+    }
+
+    // ユーザー専用のデータパス: users/{ユーザーID}/records/{記録ID}
+    const recordsRef = db.collection('users').doc(currentUser.uid).collection('records');
+    
     try {
-        // 注意: Claude.ai環境では動作しません。実際のWebサイトでは正常に動作します。
-        const saved = localStorage.getItem('fxTradeRecords');
-        if (saved) {
-            tradeRecords = JSON.parse(saved);
-            console.log('記録を読み込みました:', tradeRecords.length + '件');
-        }
+        console.log('Firestoreから記録を読み込み中...', currentUser.uid);
+        const querySnapshot = await recordsRef.orderBy('timestamp', 'desc').get();
+        tradeRecords = [];
+        querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            tradeRecords.push({
+                id: doc.id,
+                ...data,
+                timestamp: data.timestamp.toDate().toISOString() // Firestoreの時間をJSの時間に変換
+            });
+        });
+        console.log('記録を読み込みました:', tradeRecords.length + '件');
     } catch (error) {
-        console.log('記録の読み込みに失敗しました（Claude.ai環境では正常）:', error.message);
-        tradeRecords = []; // Claude.ai環境ではメモリ内のみで動作
+        console.error('記録の読み込みエラー:', error);
+        alert('記録の読み込みに失敗しました: ' + error.message);
+        tradeRecords = [];
     }
     updateRecordsDisplay();
 }
 
-function saveRecords() {
+// 記録の保存（ユーザー専用パス使用）
+async function saveRecordToDb(record) {
+    if (!currentUser) {
+        alert('ログインしてください');
+        return;
+    }
+
+    // ユーザー専用のデータパス
+    const recordsRef = db.collection('users').doc(currentUser.uid).collection('records');
+
     try {
-        // 注意: Claude.ai環境では動作しません。実際のWebサイトでは正常に動作します。
-        localStorage.setItem('fxTradeRecords', JSON.stringify(tradeRecords));
-        console.log('記録を保存しました:', tradeRecords.length + '件');
+        console.log('記録を保存中:', record.id, currentUser.uid);
+        const recordToSave = {
+            ...record,
+            timestamp: firebase.firestore.Timestamp.fromDate(new Date(record.timestamp)),
+            userId: currentUser.uid // セキュリティのためユーザーIDも保存
+        };
+        
+        await recordsRef.doc(record.id.toString()).set(recordToSave);
+        console.log('記録を保存しました:', record.id);
     } catch (error) {
-        console.log('記録の保存に失敗しました（Claude.ai環境では正常）:', error.message);
-        // Claude.ai環境ではメモリ内のみで動作継続
+        console.error('記録の保存エラー:', error);
+        alert('記録の保存に失敗しました: ' + error.message);
+        throw error;
     }
 }
+
+// 記録の削除（ユーザー専用パス使用）
+async function deleteRecordFromDb(recordId) {
+    if (!currentUser) {
+        alert('ログインしてください');
+        return;
+    }
+    
+    const recordRef = db.collection('users').doc(currentUser.uid).collection('records').doc(recordId.toString());
+
+    try {
+        console.log('記録を削除中:', recordId, currentUser.uid);
+        await recordRef.delete();
+        console.log('記録を削除しました:', recordId);
+    } catch (error) {
+        console.error('記録の削除エラー:', error);
+        alert('記録の削除に失敗しました: ' + error.message);
+        throw error;
+    }
+}
+
+//======================================================================
+// FXトレード記録ツールのメインロジック
+//======================================================================
+
+console.log('FXトレード記録ツール開始');
 
 // 通貨ペア変更時の処理
 currencyPair.addEventListener('change', function() {
@@ -91,27 +289,20 @@ currencyPair.addEventListener('change', function() {
 
 // 数値フォーマット関数
 function formatNumberInput(input) {
-    // カーソル位置を保存
     const cursorPosition = input.selectionStart;
     const originalLength = input.value.length;
     
-    // 入力中はカンマを一時的に削除して数値のみにする
     let value = input.value.replace(/,/g, '');
-    
-    // 数値以外の文字を削除
     value = value.replace(/[^\d]/g, '');
     
-    // 3桁区切りでカンマを追加
     if (value) {
         const formattedValue = parseInt(value).toLocaleString();
         input.value = formattedValue;
         
-        // カーソル位置を調整
         const newLength = formattedValue.length;
         const lengthDiff = newLength - originalLength;
         const newCursorPosition = cursorPosition + lengthDiff;
         
-        // カーソル位置を復元
         setTimeout(() => {
             input.setSelectionRange(newCursorPosition, newCursorPosition);
         }, 0);
@@ -121,7 +312,6 @@ function formatNumberInput(input) {
 }
 
 function validateNumberInput(input) {
-    // フォーカスが外れたときの最終チェック
     let value = input.value.replace(/,/g, '');
     if (value && !isNaN(value)) {
         input.value = parseInt(value).toLocaleString();
@@ -131,7 +321,6 @@ function validateNumberInput(input) {
 }
 
 function getNumericValue(input) {
-    // カンマを削除して数値として取得
     return parseFloat(input.value.replace(/,/g, '')) || 0;
 }
 
@@ -147,6 +336,10 @@ function calculateOptimalLots() {
         const stopLoss = parseFloat(document.getElementById('stopLoss').value);
         const targetPrice = parseFloat(document.getElementById('targetPrice').value);
         const usdJpyRate = parseFloat(document.getElementById('usdJpyRate').value) || 150.00;
+
+        console.log('計算パラメータ:', {
+            accountBalance, riskPercent, pair, entryPrice, stopLoss, targetPrice, usdJpyRate
+        });
 
         // 入力値の検証
         if (!accountBalance || !riskPercent || !entryPrice || !stopLoss || !targetPrice) {
@@ -167,44 +360,39 @@ function calculateOptimalLots() {
         const riskAmount = accountBalance * (riskPercent / 100);
         let pips, targetPips, optimalLots, lossPerLot, profitPerLot, requiredMargin;
 
-        // JPY通貨ペアの場合（1ロット = 100,000通貨、1pip = 1,000円）
+        // JPY通貨ペアの場合
         if (['USDJPY', 'EURJPY', 'GBPJPY', 'AUDJPY'].includes(pair)) {
-            // JPYペアは小数点以下2桁で1pip = 0.01
             pips = Math.abs(entryPrice - stopLoss) * 100;
             targetPips = Math.abs(entryPrice - targetPrice) * 100;
             
-            // 1ロット（100,000通貨）で1pip = 1,000円
             lossPerLot = pips * 1000;
             profitPerLot = targetPips * 1000;
             
             optimalLots = riskAmount / lossPerLot;
-            
-            // 証拠金計算（レバレッジ1000倍想定）
             requiredMargin = (entryPrice * 100000 * optimalLots) / 1000;
         }
-        // ドルストレート通貨ペアの場合（1ロット = 100,000通貨、1pip = 10USD）
+        // ドルストレート通貨ペアの場合
         else {
-            // ドルストレートは小数点以下4桁で1pip = 0.0001
             pips = Math.abs(entryPrice - stopLoss) * 10000;
             targetPips = Math.abs(entryPrice - targetPrice) * 10000;
             
-            // 1ロット（100,000通貨）で1pip = 10USD
             const lossPerLotUSD = pips * 10;
             const profitPerLotUSD = targetPips * 10;
             
-            // USDをJPYに換算
             lossPerLot = lossPerLotUSD * usdJpyRate;
             profitPerLot = profitPerLotUSD * usdJpyRate;
             
             optimalLots = riskAmount / lossPerLot;
-            
-            // 証拠金計算（レバレッジ1000倍想定）
             requiredMargin = (100000 * optimalLots * usdJpyRate) / 1000;
         }
 
         const expectedProfit = optimalLots * profitPerLot;
         const expectedLoss = optimalLots * lossPerLot;
         const riskRewardRatio = profitPerLot / lossPerLot;
+
+        console.log('計算結果:', {
+            optimalLots, expectedProfit, expectedLoss, riskRewardRatio, requiredMargin
+        });
 
         // 現在の計算結果を保存
         currentCalculation = {
@@ -227,7 +415,7 @@ function calculateOptimalLots() {
             requiredMargin
         };
 
-        // 結果表示（修正：小数点以下を削除）
+        // 結果表示
         document.getElementById('optimalLots').textContent = optimalLots.toFixed(2);
         document.getElementById('riskRewardRatio').textContent = '1:' + riskRewardRatio.toFixed(2);
         document.getElementById('expectedProfit').textContent = Math.round(expectedProfit).toLocaleString() + '円';
@@ -257,415 +445,17 @@ function calculateOptimalLots() {
 }
 
 // トレード記録保存
-function saveTradeRecord() {
+async function saveTradeRecord() {
     if (!currentCalculation) {
         alert('まず計算を実行してください');
         return;
     }
-
-    const record = {
-        id: Date.now(),
-        timestamp: new Date().toISOString(),
-        date: new Date().toLocaleDateString('ja-JP'),
-        time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }),
-        ...currentCalculation,
-        result: 'pending' // pending, win, loss
-    };
-
-    tradeRecords.unshift(record); // 最新を先頭に追加
-    saveRecords();
-    updateRecordsDisplay();
-    
-    alert('トレード記録を保存しました！');
-}
-
-// 結果更新
-function updateTradeResult(id, result) {
-    const record = tradeRecords.find(r => r.id === id);
-    if (record) {
-        record.result = result;
-        saveRecords();
-        updateRecordsDisplay();
-    }
-}
-
-// 記録表示更新
-function updateRecordsDisplay() {
-    updateStatsSummary();
-    displayRecords();
-}
-
-// 統計サマリー更新（修正：小数点以下を削除）
-function updateStatsSummary() {
-    const total = tradeRecords.length;
-    const wins = tradeRecords.filter(r => r.result === 'win').length;
-    const losses = tradeRecords.filter(r => r.result === 'loss').length;
-    const pending = tradeRecords.filter(r => r.result === 'pending').length;
-    
-    const winRate = total > 0 ? ((wins / (wins + losses)) * 100).toFixed(1) : '0.0';
-    
-    // 想定損益を計算
-    const expectedProfit = tradeRecords
-        .filter(r => r.result === 'win')
-        .reduce((sum, r) => sum + r.expectedProfit, 0);
-        
-    const expectedLoss = tradeRecords
-        .filter(r => r.result === 'loss')
-        .reduce((sum, r) => sum + r.expectedLoss, 0);
-        
-    const netProfit = expectedProfit - expectedLoss;
-
-    const html = `
-        <div class="stat-card">
-            <div class="stat-value">${total}</div>
-            <div class="stat-label">総記録数</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">${wins}</div>
-            <div class="stat-label">勝ち</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">${losses}</div>
-            <div class="stat-label">負け</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">${winRate}%</div>
-            <div class="stat-label">勝率</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value" style="color: ${netProfit >= 0 ? '#27ae60' : '#e74c3c'}">${Math.round(netProfit).toLocaleString()}</div>
-            <div class="stat-label">純損益（円）</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">${pending}</div>
-            <div class="stat-label">未決済</div>
-        </div>
-    `;
-    
-    document.getElementById('statsSummary').innerHTML = html;
-}
-
-// レコード表示（修正：小数点以下を削除）
-function displayRecords() {
-    let filteredRecords = [...tradeRecords];
-    
-    // フィルタリング
-    if (currentFilter !== 'all') {
-        filteredRecords = filteredRecords.filter(record => record.result === currentFilter);
-    }
-    
-    // ソート
-    filteredRecords.sort((a, b) => {
-        switch (currentSort) {
-            case 'date-desc':
-                return new Date(b.timestamp) - new Date(a.timestamp);
-            case 'date-asc':
-                return new Date(a.timestamp) - new Date(b.timestamp);
-            default:
-                return 0;
-        }
-    });
-
-    const tbody = document.getElementById('recordsTableBody');
-    
-    if (filteredRecords.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="11" style="text-align: center; padding: 20px; color: #6c757d;">記録がありません</td></tr>';
-        return;
-    }
-
-    tbody.innerHTML = filteredRecords.map(record => {
-        const resultBadge = getResultBadge(record.result);
-        
-        // 小数点以下桁数を適切に設定
-        const entryDisplay = record.entryPrice.toFixed(record.pair.includes('JPY') ? 2 : 5);
-        const stopDisplay = record.stopLoss.toFixed(record.pair.includes('JPY') ? 2 : 5);
-        const targetDisplay = record.targetPrice.toFixed(record.pair.includes('JPY') ? 2 : 5);
-        
-        // 買い/売り判定
-        const isBuy = record.entryPrice < record.targetPrice;
-        const tradeDirection = isBuy ? 
-            '<span style="color: #2196F3; font-weight: bold;">買い</span>' : 
-            '<span style="color: #f44336; font-weight: bold;">売り</span>';
-        
-        return `
-            <tr>
-                <td>${record.date}<br><small>${record.time}</small></td>
-                <td><strong>${record.pair}</strong><br><small>${tradeDirection}</small></td>
-                <td>${entryDisplay}</td>
-                <td>${stopDisplay}</td>
-                <td>${targetDisplay}</td>
-                <td>${record.optimalLots.toFixed(2)}</td>
-                <td style="color: #27ae60;">¥${Math.round(record.expectedProfit).toLocaleString()}</td>
-                <td style="color: #e74c3c;">¥${Math.round(record.expectedLoss).toLocaleString()}</td>
-                <td>1:${record.riskRewardRatio.toFixed(2)}</td>
-                <td>
-                    <select class="result-select" onchange="updateTradeResult(${record.id}, this.value)">
-                        <option value="pending" ${record.result === 'pending' ? 'selected' : ''}>未決済 −</option>
-                        <option value="win" ${record.result === 'win' ? 'selected' : ''}>勝ち ◯</option>
-                        <option value="loss" ${record.result === 'loss' ? 'selected' : ''}>負け ✗</option>
-                    </select>
-                </td>
-                <td>
-                    <button class="delete-record-btn" onclick="deleteRecord(${record.id})" title="この記録を削除">
-                        ❌
-                    </button>
-                </td>
-            </tr>
-        `;
-    }).join('');
-}
-
-// 結果バッジ
-function getResultBadge(result) {
-    const badges = {
-        'win': '<span class="result-badge result-win">勝利 ◯</span>',
-        'loss': '<span class="result-badge result-loss">敗北 ✗</span>',
-        'pending': '<span class="result-badge result-pending">未決済 −</span>'
-    };
-    return badges[result] || badges['pending'];
-}
-
-// CSV出力機能（修正：小数点以下を削除）
-function exportToCSV() {
-    if (tradeRecords.length === 0) {
-        alert('出力するデータがありません');
-        return;
-    }
-
-    // CSVヘッダー
-    const headers = [
-        '日付', '時間', '通貨ペア', '売買', 'エントリー価格', '損切り価格', 
-        '目標価格', 'ロット数', '想定利益', '想定損失', 'RR比', '結果'
-    ];
-
-    // データ変換
-    const csvData = tradeRecords.map(record => {
-        const isBuy = record.entryPrice < record.targetPrice;
-        const tradeDirection = isBuy ? '買い' : '売り';
-        const resultText = record.result === 'win' ? '勝ち' : 
-                         record.result === 'loss' ? '負け' : '未決済';
-        
-        return [
-            record.date,
-            record.time,
-            record.pair,
-            tradeDirection,
-            record.entryPrice,
-            record.stopLoss,
-            record.targetPrice,
-            record.optimalLots.toFixed(2),
-            Math.round(record.expectedProfit),
-            Math.round(record.expectedLoss),
-            `1:${record.riskRewardRatio.toFixed(2)}`,
-            resultText
-        ];
-    });
-
-    // CSV文字列作成
-    const csvContent = [headers, ...csvData]
-        .map(row => row.map(field => `"${field}"`).join(','))
-        .join('\n');
-
-    // BOM付きUTF-8でエンコード（Excel対応）
-    const bom = '\uFEFF';
-    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
-    
-    // ダウンロード
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `FXトレード記録_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    alert('CSVファイルをダウンロードしました！\nGoogle スプレッドシートで開くことができます。');
-}
-
-// クリップボードコピー機能（修正：小数点以下を削除）
-function copyToClipboard() {
-    console.log('コピー機能が呼び出されました');
-    
-    if (tradeRecords.length === 0) {
-        alert('コピーするデータがありません');
+    if (!currentUser) {
+        alert('ログインしてください');
         return;
     }
 
     try {
-        // ヘッダー
-        const headers = [
-            '日付', '時間', '通貨ペア', '売買', 'エントリー', '損切り', 
-            '目標', 'ロット', '想定利益', '想定損失', 'RR比', '結果'
-        ];
-
-        // データ変換
-        const tableData = tradeRecords.map(record => {
-            const isBuy = record.entryPrice < record.targetPrice;
-            const tradeDirection = isBuy ? '買い' : '売り';
-            const resultText = record.result === 'win' ? '勝ち' : 
-                             record.result === 'loss' ? '負け' : '未決済';
-            
-            return [
-                record.date,
-                record.time,
-                record.pair,
-                tradeDirection,
-                record.entryPrice,
-                record.stopLoss,
-                record.targetPrice,
-                record.optimalLots.toFixed(2),
-                Math.round(record.expectedProfit),
-                Math.round(record.expectedLoss),
-                `1:${record.riskRewardRatio.toFixed(2)}`,
-                resultText
-            ];
-        });
-
-        // タブ区切りテキスト作成（スプレッドシート用）
-        const clipboardContent = [headers, ...tableData]
-            .map(row => row.join('\t'))
-            .join('\n');
-
-        console.log('コピー内容:', clipboardContent);
-
-        // クリップボードにコピー
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(clipboardContent).then(function() {
-                alert('データをクリップボードにコピーしました！\nGoogle スプレッドシートに直接貼り付けできます。');
-            }, function(error) {
-                console.error('クリップボードコピーエラー:', error);
-                alert('コピーに失敗しました: ' + error.message);
-            });
-        } else {
-            // フォールバック: テキストエリアを使用
-            const textArea = document.createElement('textarea');
-            textArea.value = clipboardContent;
-            document.body.appendChild(textArea);
-            textArea.select();
-            try {
-                document.execCommand('copy');
-                alert('データをクリップボードにコピーしました！\nGoogle スプレッドシートに直接貼り付けできます。');
-            } catch (error) {
-                console.error('フォールバックコピーエラー:', error);
-                alert('コピーに失敗しました。手動でデータを選択してコピーしてください。');
-            }
-            document.body.removeChild(textArea);
-        }
-    } catch (error) {
-        console.error('コピー機能でエラー:', error);
-        alert('コピー機能でエラーが発生しました: ' + error.message);
-    }
-}
-
-// 個別記録削除
-function deleteRecord(id) {
-    console.log('削除機能が呼び出されました。ID:', id);
-    
-    try {
-        const record = tradeRecords.find(r => r.id === id);
-        if (!record) {
-            console.log('記録が見つかりません。ID:', id);
-            alert('削除する記録が見つかりません');
-            return;
-        }
-
-        console.log('削除対象の記録:', record);
-
-        const confirmed = window.confirm(
-            `この記録を削除しますか？\n\n通貨ペア: ${record.pair}\n日時: ${record.date} ${record.time}\n\nこの操作は取り消せません。`
-        );
-
-        if (confirmed) {
-            console.log('削除が確認されました');
-            
-            // 配列から削除
-            const beforeLength = tradeRecords.length;
-            tradeRecords = tradeRecords.filter(r => r.id !== id);
-            const afterLength = tradeRecords.length;
-            
-            console.log(`削除前: ${beforeLength}件, 削除後: ${afterLength}件`);
-            
-            // 保存
-            saveRecords();
-            
-            // 表示更新
-            updateRecordsDisplay();
-            
-            alert('記録を削除しました。統計も更新されました。');
-        } else {
-            console.log('削除がキャンセルされました');
-        }
-    } catch (error) {
-        console.error('削除処理でエラーが発生:', error);
-        alert('削除処理でエラーが発生しました: ' + error.message);
-    }
-}
-
-// 全記録削除（確認付き）
-function confirmClearAllRecords() {
-    if (tradeRecords.length === 0) {
-        alert('削除するデータがありません');
-        return;
-    }
-
-    const confirmed = window.confirm(
-        `本当に全ての記録を削除しますか？\n\n現在の記録数: ${tradeRecords.length}件\n\nこの操作は取り消せません。`
-    );
-
-    if (confirmed) {
-        const doubleConfirm = window.confirm(
-            '最終確認です。\n全てのトレード記録が完全に削除されます。\n\n本当に実行しますか？'
-        );
-
-        if (doubleConfirm) {
-            tradeRecords = [];
-            saveRecords();
-            updateRecordsDisplay();
-            updateStatsSummary();
-            alert('全ての記録を削除しました。');
-        }
-    }
-}
-
-// ソート機能
-function sortRecords(sortType) {
-    currentSort = sortType;
-    
-    // ボタンのactive状態更新
-    document.querySelectorAll('.control-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    event.target.classList.add('active');
-    
-    displayRecords();
-}
-
-// フィルタ機能
-function filterRecords(filterType) {
-    currentFilter = filterType;
-    
-    // ボタンのactive状態更新
-    document.querySelectorAll('.control-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    event.target.classList.add('active');
-    
-    displayRecords();
-}
-
-// 全記録削除
-function clearAllRecords() {
-    if (confirm('本当に全ての記録を削除しますか？この操作は取り消せません。')) {
-        tradeRecords = [];
-        saveRecords();
-        updateRecordsDisplay();
-        alert('全ての記録を削除しました');
-    }
-}
-
-// 初期化
-console.log('初期化開始');
-currencyPair.dispatchEvent(new Event('change'));
-loadRecords(); // 保存された記録を読み込み
-console.log('初期化完了');
+        const record = {
+            id: Date.now(),
+            timestamp: new Date().toI

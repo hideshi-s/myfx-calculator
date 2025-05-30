@@ -5,16 +5,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FXトレード記録ツール - 計算＆履歴管理</title>
     <link rel="stylesheet" href="style.css">
-    <script src="script.js" defer></script>
 
     <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="shortcut icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
-    </head>
+</head>
+
 <body>
-    <div class="container">
+    <!-- 認証セクション -->
+    <div id="auth-container">
+        <div id="login-form-container" style="display: flex;">
+            <div class="auth-form">
+                <h2>新規登録</h2>
+                <input type="email" id="signup-email" placeholder="メールアドレス" required>
+                <input type="password" id="signup-password" placeholder="パスワード（6文字以上）" required>
+                <button onclick="signUp()">登録</button>
+            </div>
+            <div class="auth-form">
+                <h2>ログイン</h2>
+                <input type="email" id="login-email" placeholder="メールアドレス" required>
+                <input type="password" id="login-password" placeholder="パスワード" required>
+                <button onclick="logIn()">ログイン</button>
+            </div>
+        </div>
+
+        <div id="user-info-container" style="display: none;">
+            <p>ようこそ、<span id="user-email"></span> さん</p>
+            <button onclick="logOut()">ログアウト</button>
+        </div>
+    </div>
+
+    <!-- メインコンテンツ -->
+    <div class="container" style="display: none;">
         <div class="header">
             <h1>📊 FXトレード記録ツール</h1>
             <p>ロット計算・トレード記録・収支分析を一元管理</p>
@@ -23,13 +47,13 @@
         <div class="form-container">
             <div class="form-row">
                 <div class="form-group">
-    <label for="accountBalance">口座残高（円）</label>
-    <input type="text" id="accountBalance" value="100,000" 
-           oninput="formatNumberInput(this)" 
-           onblur="validateNumberInput(this)" 
-           placeholder="例: 1,000,000" 
-           required>
-</div>
+                    <label for="accountBalance">口座残高（円）</label>
+                    <input type="text" id="accountBalance" value="100,000" 
+                           oninput="formatNumberInput(this)" 
+                           onblur="validateNumberInput(this)" 
+                           placeholder="例: 1,000,000" 
+                           required>
+                </div>
                 
                 <div class="form-group">
                     <label for="riskPercent">許容損失率（%）</label>
@@ -84,7 +108,7 @@
                 💡 最適ロット数を計算
             </button>
 
-            <div id="results" class="result-container">
+            <div id="results" class="result-container" style="display: none;">
                 <div class="lot-result">
                     <div class="value" id="optimalLots">-</div>
                     <div class="label">最適ロット数</div>
@@ -125,7 +149,7 @@
                 </button>
             </div>
 
-            <div id="warning" class="warning">
+            <div id="warning" class="warning" style="display: none;">
                 ⚠️ 警告メッセージがここに表示されます
             </div>
         </div>
@@ -134,7 +158,11 @@
         <div class="records-section">
             <div class="records-header">
                 <h2 class="records-title">📈 トレード記録</h2>
-                <button class="clear-data-btn" onclick="clearAllRecords()">全記録削除</button>
+                <div class="export-buttons">
+                    <button class="export-btn" onclick="exportToCSV()">📁 CSV出力</button>
+                    <button class="export-btn" onclick="copyToClipboard()">📋 コピー</button>
+                    <button class="clear-data-btn" onclick="confirmClearAllRecords()">🗑️ 全記録削除</button>
+                </div>
             </div>
 
             <div class="stats-summary" id="statsSummary">
@@ -174,5 +202,23 @@
             </div>
         </div>
     </div>
+
+    <!-- Firebase SDKの読み込み -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    
+    <!-- あなたのFirebase設定とメインスクリプト -->
+    <script>
+        // ここにあなたのFirebase設定を記述
+        const firebaseConfig = {
+            // あなたの設定情報をここに貼り付け
+        };
+        const app = firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+    </script>
+    
+    <script src="script.js"></script>
 </body>
 </html>
