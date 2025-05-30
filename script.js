@@ -236,57 +236,6 @@ async function deleteRecordFromDb(recordId) {
 
 console.log('FXトレード記録ツール開始');
 
-// 通貨ペア変更時の処理
-currencyPair.addEventListener('change', function() {
-    console.log('通貨ペア変更: ' + this.value);
-    const pair = this.value;
-    const isDollarStraight = ['EURUSD', 'GBPUSD', 'AUDUSD'].includes(pair);
-    
-    usdJpyGroup.style.display = isDollarStraight ? 'block' : 'none';
-    
-    const entryPrice = document.getElementById('entryPrice');
-    const stopLoss = document.getElementById('stopLoss');
-    const targetPrice = document.getElementById('targetPrice');
-    
-    switch(pair) {
-        case 'USDJPY':
-            entryPrice.value = '150.00';
-            stopLoss.value = '150.20';
-            targetPrice.value = '149.70';
-            break;
-        case 'EURJPY':
-            entryPrice.value = '165.00';
-            stopLoss.value = '165.30';
-            targetPrice.value = '164.70';
-            break;
-        case 'GBPJPY':
-            entryPrice.value = '190.00';
-            stopLoss.value = '190.30';
-            targetPrice.value = '189.70';
-            break;
-        case 'AUDJPY':
-            entryPrice.value = '100.00';
-            stopLoss.value = '100.30';
-            targetPrice.value = '99.70';
-            break;
-        case 'EURUSD':
-            entryPrice.value = '1.1000';
-            stopLoss.value = '1.0970';
-            targetPrice.value = '1.1030';
-            break;
-        case 'GBPUSD':
-            entryPrice.value = '1.2700';
-            stopLoss.value = '1.2670';
-            targetPrice.value = '1.2730';
-            break;
-        case 'AUDUSD':
-            entryPrice.value = '0.6700';
-            stopLoss.value = '0.6670';
-            targetPrice.value = '0.6730';
-            break;
-    }
-});
-
 // 数値フォーマット関数
 function formatNumberInput(input) {
     const cursorPosition = input.selectionStart;
@@ -458,4 +407,537 @@ async function saveTradeRecord() {
     try {
         const record = {
             id: Date.now(),
-            timestamp: new Date().toI
+            timestamp: new Date().toISOString(),
+            date: new Date().toLocaleDateString('ja-JP'),
+            time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }),
+            ...currentCalculation,
+            result: 'pending'
+        };
+
+        console.log('トレード記録を保存中:', record);
+        await saveRecordToDb(record);
+        tradeRecords.unshift(record);
+        updateRecordsDisplay();
+        
+        alert('トレード記録を保存しました！');
+    } catch (error) {
+        console.error('記録保存エラー:', error);
+        alert('記録の保存に失敗しました: ' + error.message);
+    }
+}
+
+// 結果更新
+async function updateTradeResult(id, result) {
+    if (!currentUser) {
+        alert('ログインしてください');
+        return;
+    }
+    
+    try {
+        console.log('トレード結果を更新中:', id, result);
+        const record = tradeRecords.find(r => r.id.toString() === id.toString());
+        if (record) {
+            record.result = result;
+            await saveRecordToDb(record);
+            updateRecordsDisplay();
+            console.log('トレード結果を更新しました:', id, result);
+        }
+    } catch (error) {
+        console.error('結果更新エラー:', error);
+        alert('結果の更新に失敗しました: ' + error.message);
+    }
+}
+
+// 記録表示更新
+function updateRecordsDisplay() {
+    updateStatsSummary();
+    displayRecords();
+}
+
+// 統計サマリー更新
+function updateStatsSummary() {
+    const total = tradeRecords.length;
+    const wins = tradeRecords.filter(r => r.result === 'win').length;
+    const losses = tradeRecords.filter(r => r.result === 'loss').length;
+    const pending = tradeRecords.filter(r => r.result === 'pending').length;
+    
+    const winRate = total > 0 ? ((wins / (wins + losses)) * 100).toFixed(1) : '0.0';
+    
+    const expectedProfit = tradeRecords
+        .filter(r => r.result === 'win')
+        .reduce((sum, r) => sum + r.expectedProfit, 0);
+        
+    const expectedLoss = tradeRecords
+        .filter(r => r.result === 'loss')
+        .reduce((sum, r) => sum + r.expectedLoss, 0);
+        
+    const netProfit = expectedProfit - expectedLoss;
+
+    const html = `
+        <div class="stat-card">
+            <div class="stat-value">${total}</div>
+            <div class="stat-label">総記録数</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${wins}</div>
+            <div class="stat-label">勝ち</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${losses}</div>
+            <div class="stat-label">負け</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${winRate}%</div>
+            <div class="stat-label">勝率</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" style="color: ${netProfit >= 0 ? '#27ae60' : '#e74c3c'}">${Math.round(netProfit).toLocaleString()}</div>
+            <div class="stat-label">純損益（円）</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${pending}</div>
+            <div class="stat-label">未決済</div>
+        </div>
+    `;
+    
+    const statsSummaryElement = document.getElementById('statsSummary');
+    if (statsSummaryElement) {
+        statsSummaryElement.innerHTML = html;
+    }
+}
+
+// レコード表示
+function displayRecords() {
+    let filteredRecords = [...tradeRecords];
+    
+    if (currentFilter !== 'all') {
+        filteredRecords = filteredRecords.filter(record => record.result === currentFilter);
+    }
+    
+    filteredRecords.sort((a, b) => {
+        switch (currentSort) {
+            case 'date-desc':
+                return new Date(b.timestamp) - new Date(a.timestamp);
+            case 'date-asc':
+                return new Date(a.timestamp) - new Date(b.timestamp);
+            default:
+                return 0;
+        }
+    });
+
+    const tbody = document.getElementById('recordsTableBody');
+    if (!tbody) return;
+    
+    if (filteredRecords.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align: center; padding: 20px; color: #6c757d;">記録がありません</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filteredRecords.map(record => {
+        const entryDisplay = record.entryPrice.toFixed(record.pair.includes('JPY') ? 2 : 5);
+        const stopDisplay = record.stopLoss.toFixed(record.pair.includes('JPY') ? 2 : 5);
+        const targetDisplay = record.targetPrice.toFixed(record.pair.includes('JPY') ? 2 : 5);
+        
+        const isBuy = record.entryPrice < record.targetPrice;
+        const tradeDirection = isBuy ? 
+            '<span style="color: #2196F3; font-weight: bold;">買い</span>' : 
+            '<span style="color: #f44336; font-weight: bold;">売り</span>';
+        
+        return `
+            <tr>
+                <td>${record.date}<br><small>${record.time}</small></td>
+                <td><strong>${record.pair}</strong><br><small>${tradeDirection}</small></td>
+                <td>${entryDisplay}</td>
+                <td>${stopDisplay}</td>
+                <td>${targetDisplay}</td>
+                <td>${record.optimalLots.toFixed(2)}</td>
+                <td style="color: #27ae60;">¥${Math.round(record.expectedProfit).toLocaleString()}</td>
+                <td style="color: #e74c3c;">¥${Math.round(record.expectedLoss).toLocaleString()}</td>
+                <td>1:${record.riskRewardRatio.toFixed(2)}</td>
+                <td>
+                    <select class="result-select" onchange="updateTradeResult(${record.id}, this.value)">
+                        <option value="pending" ${record.result === 'pending' ? 'selected' : ''}>未決済 −</option>
+                        <option value="win" ${record.result === 'win' ? 'selected' : ''}>勝ち ◯</option>
+                        <option value="loss" ${record.result === 'loss' ? 'selected' : ''}>負け ✗</option>
+                    </select>
+                </td>
+                <td>
+                    <button class="delete-record-btn" onclick="deleteRecord(${record.id})" title="この記録を削除">
+                        ❌
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// CSV出力機能
+function exportToCSV() {
+    if (tradeRecords.length === 0) {
+        alert('出力するデータがありません');
+        return;
+    }
+
+    const headers = [
+        '日付', '時間', '通貨ペア', '売買', 'エントリー価格', '損切り価格', 
+        '目標価格', 'ロット数', '想定利益', '想定損失', 'RR比', '結果'
+    ];
+
+    const csvData = tradeRecords.map(record => {
+        const isBuy = record.entryPrice < record.targetPrice;
+        const tradeDirection = isBuy ? '買い' : '売り';
+        const resultText = record.result === 'win' ? '勝ち' : 
+                         record.result === 'loss' ? '負け' : '未決済';
+        
+        return [
+            record.date,
+            record.time,
+            record.pair,
+            tradeDirection,
+            record.entryPrice,
+            record.stopLoss,
+            record.targetPrice,
+            record.optimalLots.toFixed(2),
+            Math.round(record.expectedProfit),
+            Math.round(record.expectedLoss),
+            `1:${record.riskRewardRatio.toFixed(2)}`,
+            resultText
+        ];
+    });
+
+    const csvContent = [headers, ...csvData]
+        .map(row => row.map(field => `"${field}"`).join(','))
+        .join('\n');
+
+    const bom = '\uFEFF';
+    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+    
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `FXトレード記録_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    console.log('CSVファイルをダウンロードしました');
+    alert('CSVファイルをダウンロードしました！');
+}
+
+// クリップボードコピー機能
+function copyToClipboard() {
+    if (tradeRecords.length === 0) {
+        alert('コピーするデータがありません');
+        return;
+    }
+
+    try {
+        const headers = [
+            '日付', '時間', '通貨ペア', '売買', 'エントリー', '損切り', 
+            '目標', 'ロット', '想定利益', '想定損失', 'RR比', '結果'
+        ];
+
+        const tableData = tradeRecords.map(record => {
+            const isBuy = record.entryPrice < record.targetPrice;
+            const tradeDirection = isBuy ? '買い' : '売り';
+            const resultText = record.result === 'win' ? '勝ち' : 
+                             record.result === 'loss' ? '負け' : '未決済';
+            
+            return [
+                record.date,
+                record.time,
+                record.pair,
+                tradeDirection,
+                record.entryPrice,
+                record.stopLoss,
+                record.targetPrice,
+                record.optimalLots.toFixed(2),
+                Math.round(record.expectedProfit),
+                Math.round(record.expectedLoss),
+                `1:${record.riskRewardRatio.toFixed(2)}`,
+                resultText
+            ];
+        });
+
+        const clipboardContent = [headers, ...tableData]
+            .map(row => row.join('\t'))
+            .join('\n');
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(clipboardContent).then(function() {
+                console.log('クリップボードコピー成功');
+                alert('データをクリップボードにコピーしました！\nGoogle スプレッドシートに直接貼り付けできます。');
+            }, function(error) {
+                console.error('クリップボードコピーエラー:', error);
+                alert('コピーに失敗しました: ' + error.message);
+            });
+        } else {
+            const textArea = document.createElement('textarea');
+            textArea.value = clipboardContent;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                console.log('フォールバックコピー成功');
+                alert('データをクリップボードにコピーしました！');
+            } catch (error) {
+                console.error('フォールバックコピーエラー:', error);
+                alert('コピーに失敗しました。');
+            }
+            document.body.removeChild(textArea);
+        }
+    } catch (error) {
+        console.error('コピー機能でエラー:', error);
+        alert('コピー機能でエラーが発生しました: ' + error.message);
+    }
+}
+
+// 個別記録削除
+async function deleteRecord(id) {
+    if (!currentUser) {
+        alert('ログインしてください');
+        return;
+    }
+    
+    try {
+        const record = tradeRecords.find(r => r.id.toString() === id.toString());
+        if (!record) {
+            alert('削除する記録が見つかりません');
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `この記録を削除しますか？\n\n通貨ペア: ${record.pair}\n日時: ${record.date} ${record.time}\n\nこの操作は取り消せません。`
+        );
+
+        if (confirmed) {
+            console.log('個別記録を削除中:', id);
+            await deleteRecordFromDb(id);
+            tradeRecords = tradeRecords.filter(r => r.id.toString() !== id.toString());
+            updateRecordsDisplay();
+            console.log('個別記録を削除しました:', id);
+            alert('記録を削除しました。');
+        }
+    } catch (error) {
+        console.error('削除処理でエラーが発生:', error);
+        alert('削除処理でエラーが発生しました: ' + error.message);
+    }
+}
+
+// 全記録削除
+async function confirmClearAllRecords() {
+    if (!currentUser) {
+        alert('ログインしてください');
+        return;
+    }
+    
+    if (tradeRecords.length === 0) {
+        alert('削除するデータがありません');
+        return;
+    }
+
+    const confirmed = window.confirm(
+        `本当に全ての記録を削除しますか？\n\n現在の記録数: ${tradeRecords.length}件\n\nこの操作は取り消せません。`
+    );
+
+    if (confirmed) {
+        const doubleConfirm = window.confirm(
+            '最終確認です。\n全てのトレード記録が完全に削除されます。\n\n本当に実行しますか？'
+        );
+
+        if (doubleConfirm) {
+            try {
+                console.log('全記録を削除中...', tradeRecords.length + '件');
+                // Firestoreから全記録を削除
+                const batch = db.batch();
+                tradeRecords.forEach(record => {
+                    const docRef = db.collection('users').doc(currentUser.uid).collection('records').doc(record.id.toString());
+                    batch.delete(docRef);
+                });
+                await batch.commit();
+                
+                tradeRecords = [];
+                updateRecordsDisplay();
+                console.log('全記録を削除しました');
+                alert('全ての記録を削除しました。');
+            } catch (error) {
+                console.error('全削除エラー:', error);
+                alert('削除処理でエラーが発生しました: ' + error.message);
+            }
+        }
+    }
+}
+
+//======================================================================
+// 初期化処理
+//======================================================================
+
+console.log('初期化開始');
+
+// DOMが読み込まれた後に初期化し、イベントリスナーを設定
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM読み込み完了');
+    
+    // --- イベントリスナー（ボタンと機能の紐付け） ---
+    
+    // 新規登録ボタン
+    const signupBtn = document.getElementById('signup-button');
+    if (signupBtn) {
+        signupBtn.addEventListener('click', signUp);
+        console.log('新規登録ボタンのイベントリスナー設定完了');
+    }
+    
+    // ログインボタン
+    const loginBtn = document.getElementById('login-button');
+    if (loginBtn) {
+        loginBtn.addEventListener('click', logIn);
+        console.log('ログインボタンのイベントリスナー設定完了');
+    }
+    
+    // ログアウトボタン（最初隠れているので存在確認してから紐付け）
+    const logoutBtn = document.getElementById('logout-button');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', logOut);
+        console.log('ログアウトボタンのイベントリスナー設定完了');
+    }
+    
+    // 計算ボタン
+    const calculateBtn = document.getElementById('calculate-button');
+    if (calculateBtn) {
+        calculateBtn.addEventListener('click', calculateOptimalLots);
+        console.log('計算ボタンのイベントリスナー設定完了');
+    }
+    
+    // 記録保存ボタン
+    const saveBtn = document.getElementById('save-record-button');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', saveTradeRecord);
+        console.log('記録保存ボタンのイベントリスナー設定完了');
+    }
+    
+    // エクスポートボタン
+    const exportCsvBtn = document.getElementById('export-csv-button');
+    if (exportCsvBtn) {
+        exportCsvBtn.addEventListener('click', exportToCSV);
+        console.log('CSV出力ボタンのイベントリスナー設定完了');
+    }
+    
+    // クリップボードコピーボタン
+    const copyBtn = document.getElementById('copy-clipboard-button');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', copyToClipboard);
+        console.log('クリップボードコピーボタンのイベントリスナー設定完了');
+    }
+    
+    // 全削除ボタン
+    const clearAllBtn = document.getElementById('clear-all-button');
+    if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', confirmClearAllRecords);
+        console.log('全削除ボタンのイベントリスナー設定完了');
+    }
+    
+    // ソート・フィルタボタン
+    document.querySelectorAll('.control-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            // ソート機能
+            if (this.dataset.sort) {
+                currentSort = this.dataset.sort;
+                document.querySelectorAll('.control-btn[data-sort]').forEach(sortBtn => {
+                    sortBtn.classList.remove('active');
+                });
+                this.classList.add('active');
+                displayRecords();
+                console.log('ソート設定:', this.dataset.sort);
+            }
+            
+            // フィルタ機能
+            if (this.dataset.filter) {
+                currentFilter = this.dataset.filter;
+                document.querySelectorAll('.control-btn[data-filter]').forEach(filterBtn => {
+                    filterBtn.classList.remove('active');
+                });
+                this.classList.add('active');
+                displayRecords();
+                console.log('フィルタ設定:', this.dataset.filter);
+            }
+        });
+    });
+    console.log('ソート・フィルタボタンのイベントリスナー設定完了');
+    
+    // 口座残高入力フィールドのフォーマット処理
+    const accountBalanceInput = document.getElementById('accountBalance');
+    if (accountBalanceInput) {
+        accountBalanceInput.addEventListener('input', function() {
+            formatNumberInput(this);
+        });
+        accountBalanceInput.addEventListener('blur', function() {
+            validateNumberInput(this);
+        });
+        console.log('口座残高フィールドのイベントリスナー設定完了');
+    }
+    
+    // 通貨ペア変更時の処理
+    if (currencyPair) {
+        currencyPair.addEventListener('change', function() {
+            console.log('通貨ペア変更: ' + this.value);
+            const pair = this.value;
+            const isDollarStraight = ['EURUSD', 'GBPUSD', 'AUDUSD'].includes(pair);
+            
+            usdJpyGroup.style.display = isDollarStraight ? 'block' : 'none';
+            
+            const entryPrice = document.getElementById('entryPrice');
+            const stopLoss = document.getElementById('stopLoss');
+            const targetPrice = document.getElementById('targetPrice');
+            
+            switch(pair) {
+                case 'USDJPY':
+                    entryPrice.value = '150.00';
+                    stopLoss.value = '150.20';
+                    targetPrice.value = '149.70';
+                    break;
+                case 'EURJPY':
+                    entryPrice.value = '165.00';
+                    stopLoss.value = '165.30';
+                    targetPrice.value = '164.70';
+                    break;
+                case 'GBPJPY':
+                    entryPrice.value = '190.00';
+                    stopLoss.value = '190.30';
+                    targetPrice.value = '189.70';
+                    break;
+                case 'AUDJPY':
+                    entryPrice.value = '100.00';
+                    stopLoss.value = '100.30';
+                    targetPrice.value = '99.70';
+                    break;
+                case 'EURUSD':
+                    entryPrice.value = '1.1000';
+                    stopLoss.value = '1.0970';
+                    targetPrice.value = '1.1030';
+                    break;
+                case 'GBPUSD':
+                    entryPrice.value = '1.2700';
+                    stopLoss.value = '1.2670';
+                    targetPrice.value = '1.2730';
+                    break;
+                case 'AUDUSD':
+                    entryPrice.value = '0.6700';
+                    stopLoss.value = '0.6670';
+                    targetPrice.value = '0.6730';
+                    break;
+            }
+        });
+        
+        // 初期設定を適用
+        currencyPair.dispatchEvent(new Event('change'));
+        console.log('通貨ペア初期化完了');
+    }
+    
+    console.log('全てのイベントリスナー設定完了');
+    console.log('アプリケーション初期化完了');
+});
+
+console.log('FXトレード記録ツール - 最終版script.js 読み込み完了');

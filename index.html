@@ -21,19 +21,19 @@
                 <h2>新規登録</h2>
                 <input type="email" id="signup-email" placeholder="メールアドレス" required>
                 <input type="password" id="signup-password" placeholder="パスワード（6文字以上）" required>
-                <button onclick="signUp()">登録</button>
+                <button id="signup-button">登録</button>
             </div>
             <div class="auth-form">
                 <h2>ログイン</h2>
                 <input type="email" id="login-email" placeholder="メールアドレス" required>
                 <input type="password" id="login-password" placeholder="パスワード" required>
-                <button onclick="logIn()">ログイン</button>
+                <button id="login-button">ログイン</button>
             </div>
         </div>
 
         <div id="user-info-container" style="display: none;">
             <p>ようこそ、<span id="user-email"></span> さん</p>
-            <button onclick="logOut()">ログアウト</button>
+            <button id="logout-button">ログアウト</button>
         </div>
     </div>
 
@@ -49,8 +49,6 @@
                 <div class="form-group">
                     <label for="accountBalance">口座残高（円）</label>
                     <input type="text" id="accountBalance" value="100,000" 
-                           oninput="formatNumberInput(this)" 
-                           onblur="validateNumberInput(this)" 
                            placeholder="例: 1,000,000" 
                            required>
                 </div>
@@ -104,7 +102,7 @@
                 </div>
             </div>
 
-            <button type="button" class="calculate-btn" onclick="calculateOptimalLots()">
+            <button type="button" id="calculate-button" class="calculate-btn">
                 💡 最適ロット数を計算
             </button>
 
@@ -144,7 +142,7 @@
                     <span class="result-value" id="requiredMargin">-</span>
                 </div>
 
-                <button type="button" class="save-record-btn" onclick="saveTradeRecord()">
+                <button type="button" id="save-record-button" class="save-record-btn">
                     📝 この計算結果を記録に保存
                 </button>
             </div>
@@ -159,9 +157,9 @@
             <div class="records-header">
                 <h2 class="records-title">📈 トレード記録</h2>
                 <div class="export-buttons">
-                    <button class="export-btn" onclick="exportToCSV()">📁 CSV出力</button>
-                    <button class="export-btn" onclick="copyToClipboard()">📋 コピー</button>
-                    <button class="clear-data-btn" onclick="confirmClearAllRecords()">🗑️ 全記録削除</button>
+                    <button id="export-csv-button" class="export-btn">📁 CSV出力</button>
+                    <button id="copy-clipboard-button" class="export-btn">📋 コピー</button>
+                    <button id="clear-all-button" class="clear-data-btn">🗑️ 全記録削除</button>
                 </div>
             </div>
 
@@ -170,12 +168,12 @@
             </div>
 
             <div class="controls">
-                <button class="control-btn active" onclick="sortRecords('date-desc')">新しい順</button>
-                <button class="control-btn" onclick="sortRecords('date-asc')">古い順</button>
-                <button class="control-btn" onclick="filterRecords('all')">全て表示</button>
-                <button class="control-btn" onclick="filterRecords('win')">勝ちのみ</button>
-                <button class="control-btn" onclick="filterRecords('loss')">負けのみ</button>
-                <button class="control-btn" onclick="filterRecords('pending')">未決済</button>
+                <button class="control-btn active" data-sort="date-desc">新しい順</button>
+                <button class="control-btn" data-sort="date-asc">古い順</button>
+                <button class="control-btn" data-filter="all">全て表示</button>
+                <button class="control-btn" data-filter="win">勝ちのみ</button>
+                <button class="control-btn" data-filter="loss">負けのみ</button>
+                <button class="control-btn" data-filter="pending">未決済</button>
             </div>
             
             <div style="overflow-x: auto;">
@@ -208,17 +206,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     
-    <!-- あなたのFirebase設定とメインスクリプト -->
-    <script>
-        // ここにあなたのFirebase設定を記述
-        const firebaseConfig = {
-            // あなたの設定情報をここに貼り付け
-        };
-        const app = firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
-    </script>
-    
+    <!-- メインスクリプト（Firebase初期化も含む） -->
     <script src="script.js"></script>
 </body>
 </html>
