@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FXロット計算・記録ツール | プロフェッショナル版</title>
+    <meta name="description" content="リスク管理に基づいた最適なFXロット数を計算し、トレード記録を管理できるプロフェッショナルツール">
+    <meta name="keywords" content="FX,ロット計算,リスク管理,トレード記録,外国為替,手動レート,オフライン対応">
+    <meta name="author" content="FX Calculator Pro">
+    
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: fonts.gstatic.com fonts.googleapis.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';">
+    
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="style.css">
+    
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💱</text></svg>">
+    
+    <meta name="theme-color" content="#3498db">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="FX Calculator">
+</head>
+<body>
+    <div id="loading-screen" class="loading-screen" aria-hidden="true">
+        <div class="loading-spinner" aria-hidden="true"></div>
+        <p>アプリケーションを起動中...</p>
+        <small>手動レート設定・オフライン対応版</small>
+    </div>
+
+    <div id="error-banner" class="error-banner" style="display: none;" role="alert" aria-live="assertive">
+        <div class="error-content">
+            <span class="error-icon">⚠️</span>
+            <span id="error-message"></span>
+            <div class="error-actions">
+                <button id="error-close" class="error-close" aria-label="エラーメッセージを閉じる">&times;</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="connection-status" class="connection-status" style="display: none;">
+        <span id="status-icon">✏️</span>
+        <span id="status-text">手動レートモード</span>
+    </div>
+
+    <div id="auth-container" style="display: none;"> 
+        <div id="login-form-container">
+            <form class="auth-form" id="login-form" novalidate>
+                <h2>🔐 ログイン</h2>
+                <div class="form-group">
+                    <label for="login-username">ユーザー名</label>
+                    <input type="text" id="login-username" placeholder="ユーザー名" required aria-describedby="login-username-error" autocomplete="username">
+                    <span class="form-error" id="login-username-error" role="alert"></span>
+                </div>
+                <div class="form-group">
+                    <label for="login-password">パスワード</label>
+                    <input type="password" id="login-password" placeholder="パスワード" required aria-describedby="login-password-error" autocomplete="current-password">
+                    <span class="form-error" id="login-password-error" role="alert"></span>
+                </div>
+                <button type="button" id="login-btn">ログイン</button>
+                <div class="auth-help">
+                    <small>初回利用の方は新規登録をしてください</small>
+                </div>
+                 <div class="demo-info">
+                    <small>🖐️ <strong>手動レート設定版</strong></small>
+                </div>
+            </form>
+            
+            <form class="auth-form" id="register-form" novalidate>
+                <h2>✨ 新規登録</h2>
+                <div class="form-group">
+                    <label for="register-username">ユーザー名（4文字以上）</label>
+                    <input type="text" id="register-username" placeholder="ユーザー名（英数字のみ）" required minlength="4" aria-describedby="register-username-error" autocomplete="username">
+                    <span class="form-error" id="register-username-error" role="alert"></span>
+                </div>
+                <div class="form-group">
+                    <label for="register-password">パスワード（6文字以上）</label>
+                    <input type="password" id="register-password" placeholder="パスワード（大文字・小文字・数字を含む）" required minlength="6" aria-describedby="register-password-error" autocomplete="new-password">
+                    <span class="form-error" id="register-password-error" role="alert"></span>
+                </div>
+                <button type="button" id="register-btn">登録</button>
+                <div class="auth-help">
+                    <small>パスワードは暗号化されて安全に保存されます</small>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="user-info-container" style="display: none;">
+        <div class="user-info-content">
+            <span>👤 ログイン中: <strong id="current-user"></strong></span>
+            <div class="user-actions">
+                <button id="logout-btn" aria-label="ログアウト">ログアウト</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container" style="display: none;"> 
+        <header class="header">
+            <h1>
+                💱 FXロット計算・記録ツール
+            </h1>
+            <p>リスク管理に基づいた最適なロット数を計算します</p>
+            <div class="app-version">
+                <small>🛠️ 手動レート設定版 v2.2</small> 
+            </div>
+        </header>
+        
+        <main class="form-container">
+            <section class="currency-group" aria-labelledby="money-management-title">
+                <h3 id="money-management-title">💼 資金管理設定</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="balance">口座残高</label>
+                        <input type="text" id="balance" placeholder="100,000" data-format="number" aria-describedby="balance-help" required>
+                        <small id="balance-help" class="form-help">口座の現在の残高を入力してください</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="risk-percent">リスク許容度 (%)</label>
+                        <input type="number" id="risk-percent" placeholder="2" step="0.1" min="0.1" max="10" aria-describedby="risk-help" required>
+                        <small id="risk-help" class="form-help">1回のトレードで失っても良い資金の割合（推奨：1-3%）</small>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="leverage">最大レバレッジ</label>
+                        <select id="leverage" aria-describedby="leverage-help">
+                            <option value="25">25倍 (日本国内)</option>
+                            <option value="50">50倍</option>
+                            <option value="100">100倍</option>
+                            <option value="200">200倍</option>
+                            <option value="400">400倍</option>
+                            <option value="500">500倍</option>
+                            <option value="888">888倍 (XM)</option>
+                            <option value="1000" selected>1000倍 (XM Trading)</option>
+                        </select>
+                        <small id="leverage-help" class="form-help">ブローカーの最大レバレッジを選択</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="account-currency">口座通貨</label>
+                        <select id="account-currency" aria-describedby="account-currency-help">
+                            <option value="JPY">JPY (日本円)</option>
+                            <option value="USD">USD (米ドル)</option>
+                            <option value="EUR">EUR (ユーロ)</option>
+                        </select>
+                        <small id="account-currency-help" class="form-help">お使いの取引口座の基本通貨</small>
+                    </div>
+                </div>
+            </section>
+
+            <section class="currency-group" aria-labelledby="currency-pair-title">
+                <h3 id="currency-pair-title">💱 通貨ペア設定</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="from-currency">基軸通貨</label>
+                        <select id="from-currency" aria-describedby="from-currency-help">
+                            <option value="USD" selected>USD (米ドル)</option>
+                            <option value="EUR">EUR (ユーロ)</option>
+                            <option value="GBP">GBP (英ポンド)</option>
+                            <option value="AUD">AUD (豪ドル)</option>
+                            <option value="NZD">NZD (NZドル)</option>
+                            <option value="CAD">CAD (加ドル)</option>
+                            <option value="CHF">CHF (スイスフラン)</option>
+                        </select>
+                        <small id="from-currency-help" class="form-help">通貨ペアの左側（基軸通貨）</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="to-currency">決済通貨</label>
+                        <select id="to-currency" aria-describedby="to-currency-help">
+                            <option value="JPY" selected>JPY (日本円)</option>
+                            <option value="USD">USD (米ドル)</option>
+                            <option value="EUR">EUR (ユーロ)</option>
+                            <option value="GBP">GBP (英ポンド)</option>
+                            <option value="AUD">AUD (豪ドル)</option>
+                            <option value="NZD">NZD (NZドル)</option>
+                            <option value="CAD">CAD (加ドル)</option>
+                            <option value="CHF">CHF (スイスフラン)</option>
+                        </select>
+                        <small id="to-currency-help" class="form-help">通貨ペアの右側（決済通貨）</small>
+                    </div>
+                </div>
+                
+                <div class="exchange-rate-display" id="exchange-rate-display" style="display: none;" role="status" aria-live="polite">
+                    <div class="rate-info">
+                        <span class="rate-label">設定レート:</span>
+                        <span class="rate-value" id="current-rate">未設定</span>
+                        <span class="rate-status" id="rate-status" title="レート設定状況">✏️</span>
+                    </div>
+                    <div class="rate-updated">
+                        最終設定日時: <span id="rate-timestamp">-</span>
+                    </div>
+                    <div class="rate-buttons">
+                        <button class="manual-adjust-btn" id="manual-adjust-btn" type="button" title="手動でレートを設定/変更">
+                            🎯 レート設定/変更
+                        </button>
+                        <button class="debug-info-btn" id="debug-info-btn" type="button" title="システム診断情報を表示">
+                            🔍 診断
+                        </button>
+                    </div>
+                    <div class="rate-help">
+                        <small>💡 「レート設定/変更」ボタンから、取引する通貨ペアの現在レートを手動で入力してください。</small>
+                    </div>
+                </div>
+            </section>
+
+            <section class="currency-group" aria-labelledby="price-settings-title">
+                <h3 id="price-settings-title">📊 価格設定</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="entry-price">エントリー価格</label>
+                        <input type="number" id="entry-price" placeholder="150.00" step="0.001" min="0" aria-describedby="entry-price-help" required>
+                        <small id="entry-price-help" class="form-help">ポジションを建てる価格</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="stop-loss">損切り価格</label>
+                        <input type="number" id="stop-loss" placeholder="149.50" step="0.001" min="0" aria-describedby="stop-loss-help" required>
+                        <small id="stop-loss-help" class="form-help">損失を確定する価格</small>
+                    </div>
+                </div>
+                <div class="form-group"> 
+                    <label for="take-profit">目標価格</label>
+                    <input type="number" id="take-profit" placeholder="151.00" step="0.001" min="0" aria-describedby="take-profit-help" required>
+                    <small id="take-profit-help" class="form-help">利益を確定する目標価格</small>
+                </div>
+            </section>
+
+            <div class="shortcut-info">
+                <small>💡 <strong>ショートカット:</strong> Ctrl+Enter で計算実行、Ctrl+S で記録保存</small>
+            </div>
+
+            <button class="calculate-btn" id="calculate-btn" type="button" aria-describedby="calculate-help">
+                💡 最適ロット数を計算
+            </button>
+            <small id="calculate-help" class="form-help">入力された条件に基づいて適切なロット数を計算します</small>
+        </main>
+
+        <aside class="result-container" style="display: none;" aria-labelledby="results-title">
+            <h2 id="results-title" class="sr-only">計算結果</h2>
+            <div class="lot-result">
+                <div class="value" aria-label="計算されたロット数">0.00</div>
+                <div style="margin-top: 10px; font-size: 1.1rem;">最適ロット数</div>
+            </div>
+            <button class="save-record-btn" id="save-record-btn" type="button" aria-describedby="save-help">
+                📝 この計算結果を記録に保存
+            </button>
+            <small id="save-help" class="form-help">計算結果をトレード記録として保存できます</small>
+        </aside>
+
+        <div class="warning" role="alert" aria-live="assertive" style="display: none;"></div>
+    </div>
+
+    <section class="records-section" style="display: none;" aria-labelledby="records-main-title">
+        <header class="records-header">
+            <h2 id="records-main-title" class="records-title">📈 トレード記録</h2>
+            <nav class="export-buttons" aria-label="エクスポート操作">
+                <button class="export-btn" id="export-csv-btn" type="button" aria-describedby="csv-help">
+                    📄 CSV出力
+                </button>
+                <button class="export-btn" id="export-copy-btn" type="button" aria-describedby="copy-help">
+                    📋 コピー
+                </button>
+                <button class="clear-data-btn" id="clear-data-btn" type="button" aria-describedby="clear-help">
+                    🗑️ 全記録削除
+                </button>
+                <small id="csv-help" class="form-help sr-only">記録をCSVファイルとしてダウンロード</small>
+                <small id="copy-help" class="form-help sr-only">記録をクリップボードにコピー</small>
+                <small id="clear-help" class="form-help sr-only">すべての記録を削除（元に戻せません）</small>
+            </nav>
+        </header>
+
+        <div class="stats-summary" aria-labelledby="stats-title">
+            <h3 id="stats-title" class="sr-only">トレード統計</h3>
+            <div class="stat-card">
+                <div class="stat-value" aria-label="総記録数">0</div>
+                <div class="stat-label">総記録数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" aria-label="勝ちトレード数">0</div>
+                <div class="stat-label">勝ち</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" aria-label="負けトレード数">0</div>
+                <div class="stat-label">負け</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" aria-label="勝率">0.0%</div>
+                <div class="stat-label">勝率</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" aria-label="総損益">¥0</div>
+                <div class="stat-label">総損益</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" aria-label="未決済ポジション数">0</div>
+                <div class="stat-label">未決済</div>
+            </div>
+        </div>
+
+        <nav class="controls" aria-label="記録フィルター">
+            <button class="control-btn active" data-filter="all" type="button">全て表示</button>
+            <button class="control-btn" data-filter="win" type="button">勝ちのみ</button>
+            <button class="control-btn" data-filter="loss" type="button">負けのみ</button>
+            <button class="control-btn" data-filter="pending" type="button">未決済</button>
+        </nav>
+
+        <div class="table-controls">
+            <div class="edit-history-controls">
+                <button class="history-btn" id="undo-btn" type="button" title="元に戻す" aria-label="編集を元に戻す">↶ 戻る</button>
+                <button class="history-btn" id="redo-btn" type="button" title="やり直し" aria-label="編集をやり直し">↷ 進む</button>
+                <span class="edit-status" id="edit-status" aria-live="polite"></span>
+            </div>
+        </div>
+        
+        <div class="table-wrapper">
+            <table class="records-table" role="table" aria-label="トレード記録一覧">
+                <thead>
+                    <tr>
+                        <th scope="col">操作</th>
+                        <th scope="col">日時</th>
+                        <th scope="col">通貨</th>
+                        <th scope="col" class="editable-header" title="クリックして編集可能">エントリー</th>
+                        <th scope="col" class="editable-header" title="クリックして編集可能">損切り</th>
+                        <th scope="col" class="editable-header" title="クリックして編集可能">目標価格</th>
+                        <th scope="col" class="editable-header" title="クリックして編集可能">ロット</th>
+                        <th scope="col">想定利益</th>
+                        <th scope="col">リスク金額</th>
+                        <th scope="col">RR比</th>
+                        <th scope="col">結果</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    </tbody>
+            </table>
+        </div>
+    </section>
+
+    <div id="rate-modal" class="modal-backdrop" style="display: none;" aria-hidden="true" role="dialog" aria-labelledby="modal-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">🎯 レート手動設定</h3>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="manual-rate-input">設定するレート</label>
+                    <input type="number" id="manual-rate-input" step="0.0001" min="0" max="9999" placeholder="150.0000" aria-describedby="rate-input-help">
+                    <small id="rate-input-help" class="form-help">手動でレートを設定します（この設定は記録され、次回起動時も有効です）</small>
+                </div>
+                <div class="rate-suggestions">
+                    <p><strong>💡 参考レート（適宜更新）:</strong></p>
+                    <div class="rate-suggestion-grid">
+                        <button type="button" class="rate-suggestion" data-rate="149.50">USD/JPY: 149.50</button>
+                        <button type="button" class="rate-suggestion" data-rate="162.30">EUR/JPY: 162.30</button>
+                        <button type="button" class="rate-suggestion" data-rate="189.80">GBP/JPY: 189.80</button>
+                        <button type="button" class="rate-suggestion" data-rate="1.085">EUR/USD: 1.085</button>
+                        <button type="button" class="rate-suggestion" data-rate="1.269">GBP/USD: 1.269</button>
+                        <button type="button" class="rate-suggestion" data-rate="0.656">AUD/USD: 0.656</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-primary" id="apply-manual-rate" type="button">適用</button>
+                <button class="modal-btn modal-btn-secondary" id="cancel-manual-rate" type="button">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification-container" class="notification-container" aria-live="polite">
+        </div>
+
+    <footer class="app-footer">
+        <div class="footer-content">
+            <p><small>© <span id="current-year">2024</span> FX Calculator Pro - 手動レート設定版</small></p>
+            <div class="footer-links">
+                <small>
+                    <span class="footer-feature">🖐️ 手動レート</span>
+                    <span class="footer-feature">📱 オフライン対応</span>
+                    <span class="footer-feature">🔒 セキュア</span>
+                    <span class="footer-feature">♿ アクセシブル</span>
+                </small>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+    <script>
+        // フッターの年を動的に更新
+        document.addEventListener('DOMContentLoaded', function() {
+            const yearEl = document.getElementById('current-year');
+            if(yearEl) {
+                yearEl.textContent = new Date().getFullYear();
+            }
+        });
+    </script>
+</body>
+</html>
